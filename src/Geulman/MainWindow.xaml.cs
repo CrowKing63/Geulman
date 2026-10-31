@@ -106,13 +106,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        var outPath = _currentFile + ".geulman-out";
-        var result = RunCli("edit", _currentFile, outPath, "--find", find, "--replace", replace);
+        // In-place overwrite: same path for input and output
+        var result = RunCli("edit", _currentFile, _currentFile, "--find", find, "--replace", replace);
         if (result != null)
         {
             ToastText.Text = "원본 형식으로 저장했습니다 — 서식·코멘트·변경 사항 보존됨.";
             ShowToast();
-            StatusText.Text = "저장 완료: " + Path.GetFileName(outPath);
+            StatusText.Text = "저장 완료: " + Path.GetFileName(_currentFile);
         }
         else
         {
