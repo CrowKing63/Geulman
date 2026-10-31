@@ -77,9 +77,15 @@ def main(argv):
     new_bytes = R.compress(R.serialize(recs))
     entries[bt_sid].data = new_bytes
 
-    # ViewText는 건드리지 않음: HWP Writer가 오픈 시 불일치를 감지하고
-    # BodyText에서 재구성한다. (ViewText 레코드 구조가 BodyText와 달라
-    # 단순 텍스트 스왑이 불가능 — M5 결정)
+    # ViewText 동기화: HWP Writer는 ViewText를 디스플레이 소스로 읽으므로
+    # 편집된 BodyText 데이터로 대체한다. (ViewText 레코드 인코딩이
+    # BodyText와 달라 same-length byte swap 불가 — 크기 불일치를
+    # HWP Writer가 오픈 시 감지하고 재구성)
+    vt_sids = [c[0] for c in cands if c[0] != bt_sid]
+    if vt_sids:
+        for vt_sid in vt_sids:
+            entries[vt_sid].data = new_bytes
+            print(f"note: synced ViewText sid {vt_sid} with edited BodyText", file=sys.stderr)
 
     cfb.dump(entries, out_path)
     print(f"swapped para {para_idx}: {old!r} -> {new!r}  ({in_path} -> {out_path})")
