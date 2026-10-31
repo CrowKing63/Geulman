@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     string? _currentFile;
     string _format = "";
+    int _replaceCount = 0;
 
     public MainWindow()
     {
@@ -58,13 +59,65 @@ public partial class MainWindow : Window
 
     private void FindReplaceBtn_Click(object sender, RoutedEventArgs e)
     {
-        StatusText.Text = "찾기·바꾸기 (MVP: 향후 ContentDialog)";
+        if (FindPanel.Visibility == Visibility.Visible)
+            FindPanel.Visibility = Visibility.Collapsed;
+        else
+            FindPanel.Visibility = Visibility.Visible;
+    }
+
+    private void CloseFindBtn_Click(object sender, RoutedEventArgs e)
+    {
+        FindPanel.Visibility = Visibility.Collapsed;
+        FindBox.Text = "";
+        ReplaceBox.Text = "";
+        _replaceCount = 0;
+        StatusText.Text = "";
+    }
+
+    private void ReplaceAllBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var find = FindBox.Text;
+        var replace = ReplaceBox.Text;
+        if (string.IsNullOrEmpty(find)) return;
+
+        _replaceCount = 0;
+        var text = BodyEditor.Text;
+        while (true)
+        {
+            int idx = text.IndexOf(find, StringComparison.Ordinal);
+            if (idx < 0) break;
+            text = text.Remove(idx, find.Length).Insert(idx, replace);
+            _replaceCount++;
+        }
+        BodyEditor.Text = text;
+        UpdateCharCount();
+        StatusText.Text = _replaceCount + "개 교체됨";
     }
 
     private void SaveBtn_Click(object sender, RoutedEventArgs e)
     {
         if (_currentFile == null) return;
-        ShowToast();
+
+        var find = FindBox.Text;
+        var replace = ReplaceBox.Text;
+        if (string.IsNullOrEmpty(find))
+        {
+            StatusText.Text = "저장: 변경 사항 없음";
+            return;
+        }
+
+        var outPath = _currentFile + ".geulman-out";
+        var result = RunCli("edit", _currentFile, outPath, "--find", find, "--replace", replace);
+        if (result != null)
+        {
+            ToastText.Text = "원본 형식으로 저장했습니다 — 서식·코멘트·변경 사항 보존됨.";
+            ShowToast();
+            StatusText.Text = "저장 완료: " + Path.GetFileName(outPath);
+        }
+        else
+        {
+            StatusText.Text = "저장 실패 (CLI 오류)";
+        }
     }
 
     private void ShowToast()

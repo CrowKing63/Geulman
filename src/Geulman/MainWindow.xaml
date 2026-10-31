@@ -27,9 +27,12 @@
         <Grid x:Name="EditState" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+
+            <!-- Header -->
             <Grid Grid.Row="0" Padding="20,14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -47,12 +50,44 @@
                            FontFamily="{StaticResource UIFont}" FontSize="12"
                            Foreground="{StaticResource InkBrush}" Opacity="0.4" VerticalAlignment="Center" />
             </Grid>
-            <ScrollViewer Grid.Row="1" Padding="48,8">
+
+            <!-- Find/Replace inline panel -->
+            <Border x:Name="FindPanel" Grid.Row="1" Visibility="Collapsed"
+                    Background="#F0F0EE" BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="0,0,0,1" Padding="20,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="FindBox" Grid.Column="0" PlaceholderText="찾을 문구"
+                             FontFamily="{StaticResource UIFont}" FontSize="13"
+                             Foreground="{StaticResource InkBrush}" MinHeight="36" Padding="10,6" />
+                    <TextBox x:Name="ReplaceBox" Grid.Column="1" PlaceholderText="바꿀 문구"
+                             FontFamily="{StaticResource UIFont}" FontSize="13"
+                             Foreground="{StaticResource InkBrush}" MinHeight="36" Padding="10,6"
+                             Margin="8,0,8,0" />
+                    <Button x:Name="ReplaceAllBtn" Grid.Column="2" Content="모두 바꾸기"
+                            Click="ReplaceAllBtn_Click" MinHeight="36" Padding="16,6" CornerRadius="6"
+                            FontFamily="{StaticResource UIFont}" FontSize="13" />
+                    <Button x:Name="CloseFindBtn" Grid.Column="3" Content="x"
+                            Click="CloseFindBtn_Click" MinHeight="36" Width="36" CornerRadius="6"
+                            FontFamily="{StaticResource UIFont}" FontSize="16"
+                            Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
+            <!-- Editor -->
+            <ScrollViewer Grid.Row="2" Padding="48,8">
                 <TextBox x:Name="BodyEditor" FontFamily="{StaticResource BodyFont}"
                          FontSize="16" Foreground="{StaticResource InkBrush}"
                          AcceptsReturn="True" TextWrapping="Wrap" />
             </ScrollViewer>
-            <Grid Grid.Row="2" Padding="20,12">
+
+            <!-- Footer -->
+            <Grid Grid.Row="3" Padding="20,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -71,7 +106,7 @@
             </Grid>
         </Grid>
 
-        <!-- State 3: Toast -->
+        <!-- Toast -->
         <Border x:Name="Toast" IsHitTestVisible="False"
                 Background="#E8F5E9" CornerRadius="8" Padding="20,14"
                 HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24"
