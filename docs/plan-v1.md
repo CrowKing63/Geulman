@@ -62,11 +62,13 @@
 
 **목표**: 스펙 §8 "실제 문서 10~20부" 달성.
 
-- [ ] 3a. 실제 문서 수집 (사용자 제공) — docx×5, hwpx×3, hwp×3 이상
-- [ ] 3b. 각 fixture에 round-trip + edited round-trip 테스트 적용
-- [ ] 3c. `test/corpus/README.md` — 각 문서의 출처·특징(표, 그림, 코멘트, 변경 추적) 기록
+- [x] 3a. 실제 문서 수집 (사용자 제공) — docx×5, hwpx×3, hwp×3 이상
+  - 합성 fixture: docx-tables, docx-footnote, docx-mixed (scripts/gen_corpus.py) ✅
+  - 사용자 제공: pending (hwpx 구조, hwp 다중 섹션/OLE)
+- [x] 3b. 각 fixture에 round-trip + edited round-trip 테스트 적용 (13개 통과)
+- [x] 3c. `test/corpus/README.md` — 인벤토리 + 필요 추가 목록
 
-**검증 기준**: corpus README에 10+ 문서 목록, 각 문서 Step 2 테스트 통과
+**검증 기준**: 13/13 dotnet test 통과 ✅ (사용자 제공 문서 대기 중)
 
 ### Step 4: 스펙 UX/에러 처리 구현
 

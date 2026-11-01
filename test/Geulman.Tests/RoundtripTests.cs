@@ -18,6 +18,9 @@ public class RoundtripTests
     [InlineData("docx-novel.docx")]
     [InlineData("docx-report.docx")]
     [InlineData("docx-image.docx")]
+    [InlineData("docx-tables.docx")]
+    [InlineData("docx-footnote.docx")]
+    [InlineData("docx-mixed.docx")]
     public void Docx_Roundtrip_AllPartsByteIdentical(string filename)
     {
         var inPath = Path.Combine(CorpusDir, filename);
