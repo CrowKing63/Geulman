@@ -23,6 +23,7 @@ internal static class Program
 {
     static int Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
         try
         {
             return args.Length switch
@@ -241,13 +242,17 @@ internal sealed class HwpEngine : IDocEngine
 
     static (int Exit, string Out, string Err) RunPy(params string[] args)
     {
-        var psi = new ProcessStartInfo("python")
+        var pyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "hermes", "hermes-agent", "venv", "Scripts", "python.exe");
+        var psi = new ProcessStartInfo(pyPath)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.ArgumentList.Add(PyScript);
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var p = Process.Start(psi)!;

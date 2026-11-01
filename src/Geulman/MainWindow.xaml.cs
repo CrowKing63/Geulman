@@ -9,6 +9,8 @@ namespace Geulman
     public partial class MainWindow : Window
     {
         private string? _currentFile;
+        private string _browseDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        private string? _selectedFile;
 
         public MainWindow()
         {
@@ -20,16 +22,79 @@ namespace Geulman
 
         private void BrowseBtn_Click(object sender, RoutedEventArgs e)
         {
+            EmptyState.Visibility = Visibility.Collapsed;
+            FileBrowser.Visibility = Visibility.Visible;
+            _selectedFile = null;
+            OpenBrowseBtn.IsEnabled = false;
+            NavigateTo(_browseDir);
+        }
+
+        private void NavigateTo(string dir)
+        {
             try
             {
-                var path = NativeMethods.ShowOpenFileDialog();
-                if (!string.IsNullOrEmpty(path))
-                    OpenFile(path);
+                _browseDir = dir;
+                PathText.Text = dir;
+                var entries = new List<FileInfoEntry>();
+
+                foreach (var d in Directory.GetDirectories(dir))
+                    entries.Add(new FileInfoEntry { Name = "[ ] " + Path.GetFileName(d), IsDir = true, FullPath = d });
+
+                foreach (var f in Directory.GetFiles(dir))
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext == ".hwp" || ext == ".hwpx" || ext == ".docx")
+                        entries.Add(new FileInfoEntry { Name = Path.GetFileName(f), IsDir = false, FullPath = f });
+                }
+
+                FileList.ItemsSource = entries;
             }
-            catch
+            catch (Exception ex)
             {
-                // File dialog can throw in unpackaged context; ignore.
+                FileBrowserHint.Text = "Error: " + ex.Message;
             }
+        }
+
+        private void UpBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var parent = Directory.GetParent(_browseDir);
+            if (parent != null)
+                NavigateTo(parent.FullName);
+        }
+
+        private void FileList_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+        {
+            if (FileList.SelectedItem is FileInfoEntry entry)
+            {
+                if (entry.IsDir)
+                {
+                    NavigateTo(entry.FullPath);
+                    return;
+                }
+                _selectedFile = entry.FullPath;
+                OpenBrowseBtn.IsEnabled = true;
+                FileBrowserHint.Text = Path.GetFileName(entry.FullPath);
+            }
+        }
+
+        private void CancelBrowseBtn_Click(object sender, RoutedEventArgs e)
+        {
+            FileBrowser.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = Visibility.Visible;
+        }
+
+        private void OpenBrowseBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedFile == null) return;
+            FileBrowser.Visibility = Visibility.Collapsed;
+            OpenFile(_selectedFile);
+        }
+
+        private class FileInfoEntry
+        {
+            public string Name { get; set; } = "";
+            public bool IsDir { get; set; }
+            public string FullPath { get; set; } = "";
         }
 
         private void OpenFile(string path)
@@ -38,18 +103,16 @@ namespace Geulman
             var result = RunCli("open", path);
             if (result == null) return;
 
+            // CLI output: "[N] text" per line — strip the index prefix
             var lines = result.Split('\n');
             var bodyLines = new List<string>();
-            int headerEnd = -1;
-            for (int i = 0; i < lines.Length; i++)
+            foreach (var line in lines)
             {
-                if (lines[i].StartsWith("[header]"))
-                {
-                    headerEnd = i;
-                    continue;
-                }
-                if (headerEnd >= 0)
-                    bodyLines.Add(lines[i]);
+                var idx = line.IndexOf("] ");
+                if (idx > 0 && line.StartsWith('['))
+                    bodyLines.Add(line.Substring(idx + 2));
+                else
+                    bodyLines.Add(line);
             }
 
             FileNameText.Text = Path.GetFileName(path);
@@ -134,9 +197,10 @@ namespace Geulman
         private string? RunCli(string command, params string[] args)
         {
             var baseDir = System.AppContext.BaseDirectory;
-            var cliPath = Path.Combine(baseDir, "..", "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "Geulman.Docx.dll");
+            var cliPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "geulman.dll"));
+            var dotnetPath = Path.Combine(@"C:\Program Files\dotnet", "dotnet.exe");
 
-            var psi = new System.Diagnostics.ProcessStartInfo("dotnet")
+            var psi = new System.Diagnostics.ProcessStartInfo(dotnetPath)
             {
                 Arguments = "\"" + cliPath + "\" " + command + " " + string.Join(" ", args.Select(a => "\"" + a + "\"")),
                 UseShellExecute = false,
@@ -144,6 +208,8 @@ namespace Geulman
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            psi.Environment["PYTHONIOENCODING"] = "utf-8";
+            psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
 
             try
             {
@@ -157,56 +223,6 @@ namespace Geulman
             {
                 return null;
             }
-        }
-    }
-
-    internal static class NativeMethods
-    {
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct OPENFILENAME
-        {
-            public uint lStructSize;
-            public System.IntPtr owner;
-            public System.IntPtr instance;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
-            public string filter;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStr)]
-            public char[] file;
-            public uint fileLength;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
-            public string title;
-            public uint flags;
-            public short fileType;
-            public short multiSelect;
-            public System.IntPtr extra;
-            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
-            public string subDir;
-            public short subDirLength;
-        }
-
-        [System.Runtime.InteropServices.DllImport("comdlg32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "GetOpenFileNameW")]
-        private static extern bool GetOpenFileName(ref OPENFILENAME ofn);
-
-        public static string? ShowOpenFileDialog()
-        {
-            var ofn = new OPENFILENAME();
-            ofn.lStructSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(ofn);
-            ofn.owner = IntPtr.Zero;
-            ofn.instance = IntPtr.Zero;
-            ofn.filter = "HWP\0*.hwp;*.hwpx\0DOCX\0*.docx\0All\0*.*\0\0";
-            ofn.file = new char[260];
-            ofn.fileLength = 260;
-            ofn.title = "Open document";
-            ofn.flags = 0x00080000 | 0x00000200;
-            ofn.fileType = 0;
-            ofn.multiSelect = 0;
-            ofn.extra = IntPtr.Zero;
-            ofn.subDir = "";
-            ofn.subDirLength = 0;
-
-            if (GetOpenFileName(ref ofn))
-                return new string(ofn.file).TrimEnd('\0');
-            return null;
         }
     }
 }
