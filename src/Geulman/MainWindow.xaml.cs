@@ -19,6 +19,9 @@ namespace Geulman
             this.AppWindow.Resize(new Windows.Graphics.SizeInt32(780, 640));
             this.Activate();
             this.Title = "Geulman";
+
+            // 4a: Load recent files
+            LoadRecentFiles();
         }
 
         private void BrowseBtn_Click(object sender, RoutedEventArgs e)
@@ -98,11 +101,56 @@ namespace Geulman
             public string FullPath { get; set; } = "";
         }
 
+        // ── 4a: Recent files ─────────────────────────────────────────────
+        private void LoadRecentFiles()
+        {
+            var recent = RecentFiles.Load();
+            if (recent.Count > 0)
+            {
+                RecentHeader.Visibility = Visibility.Visible;
+                RecentList.Visibility = Visibility.Visible;
+                RecentList.ItemsSource = recent;
+            }
+        }
+
+        private void RecentList_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+        {
+            if (RecentList.SelectedItem is string path && File.Exists(path))
+                OpenFile(path);
+        }
+
+        // ── 4c: Encrypted document detection ──────────────────────────────
+        private bool IsEncryptedDocx(string path)
+        {
+            try
+            {
+                using var zip = System.IO.Compression.ZipFile.OpenRead(path);
+                // Encrypted docx has no [Content_Types].xml, only encrypted parts
+                foreach (var entry in zip.Entries)
+                    if (entry.FullName == "[Content_Types].xml") return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
         private void OpenFile(string path)
         {
+            // 4c: Reject encrypted documents
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".docx" && IsEncryptedDocx(path))
+            {
+                StatusText.Text = "암호화된 문서는 지원되지 않습니다";
+                return;
+            }
+
             _currentFile = path;
+            RecentFiles.Save(path); // 4a: update recent list
             var result = RunCli("open", path);
-            if (result == null) return;
+            if (result == null)
+            {
+                StatusText.Text = "문서 열기 실패";
+                return;
+            }
 
             // CLI output: "[N] text" per line — strip the index prefix
             var lines = result.Split('\n');

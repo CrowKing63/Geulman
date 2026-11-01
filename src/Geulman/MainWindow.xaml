@@ -20,6 +20,21 @@
                             MinHeight="42" Padding="24,8" CornerRadius="6"
                             FontFamily="{StaticResource UIFont}" FontSize="14"
                             Background="#F0F0EE" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" />
+                    <TextBlock x:Name="RecentHeader" Text="최근 문서" FontFamily="{StaticResource UIFont}"
+                               FontSize="12" Foreground="{StaticResource InkBrush}" Opacity="0.4"
+                               HorizontalAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed" />
+                    <ListBox x:Name="RecentList" Visibility="Collapsed" MaxHeight="160"
+                             BorderThickness="0" Background="Transparent"
+                             HorizontalAlignment="Center" MinWidth="240"
+                             SelectionChanged="RecentList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="{StaticResource UIFont}"
+                                           FontSize="13" Foreground="{StaticResource InkBrush}"
+                                           Padding="6,4" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </StackPanel>
             </Border>
         </StackPanel>
