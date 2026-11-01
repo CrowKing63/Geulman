@@ -50,8 +50,9 @@ internal static class Program
         switch (cmd)
         {
             case "make-fixture":
-                Fixture.Make(args[1]);
-                Console.WriteLine($"fixture written: {args[1]}");
+                var cat = args.Length > 2 ? args[2] : "report";
+                Fixture.Make(args[1], cat);
+                Console.WriteLine($"fixture written: {args[1]} ({cat})");
                 return 0;
             case "open":
                 foreach (var (i, p) in Engines.For(args[1]).ParagraphTexts())
@@ -465,48 +466,21 @@ internal sealed class ZipEngine : IDocEngine
 // ── 테스트 픽스처 생성기: 멀티 런, rsid, 코멘트, 변경 추적을 담은 현실적 docx ──
 internal static class Fixture
 {
-    public static void Make(string outPath)
+    public static void Make(string outPath, string category)
     {
-        string document =
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
-            "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
-            "<w:body>" +
-            "<w:p w14:paraId=\"1A2B3C4D\" w14:textId=\"5E6F7A8B\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">" +
-            "<w:r w:rsidR=\"00A1B2C3\"><w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr><w:t>스마트 팩토리 전환 지원 사업 제안서</w:t></w:r>" +
-            "</w:p>" +
-            "<w:p w14:paraId=\"9C8D7E6F\">" +
-            "<w:r w:rsidR=\"00C3D4E5\"><w:t xml:space=\"preserve\">본 사업은 </w:t></w:r>" +
-            "<w:r w:rsidR=\"00C3D4E5\"><w:rPr><w:b/></w:rPr><w:t>중소 제조기업</w:t></w:r>" +
-            "<w:r w:rsidR=\"00F6A7B8\"><w:t xml:space=\"preserve\">의 생산라인 </w:t></w:r>" +
-            "<w:r w:rsidR=\"00F6A7B8\"><w:rPr><w:i/></w:rPr><w:t>디지털 전환</w:t></w:r>" +
-            "<w:r w:rsidR=\"00F6A7B8\"><w:t xml:space=\"preserve\">을 지원하는 것을 목적으로 한다.</w:t></w:r>" +
-            "</w:p>" +
-            "<w:p w14:paraId=\"0A1B2C3D\">" +
-            "<w:r w:rsidR=\"00112233\"><w:t>총 </w:t></w:r>" +
-            "<w:ins w:id=\"1\" w:author=\"김작가\" w:date=\"2026-10-30T12:00:00Z\">" +
-            "<w:r><w:t>12개월간</w:t></w:r></w:ins>" +
-            "<w:del w:id=\"2\" w:author=\"김작가\" w:date=\"2026-10-30T12:05:00Z\">" +
-            "<w:r><w:delText>6개월간</w:delText></w:r></w:del>" +
-            "<w:r w:rsidR=\"00112233\"><w:t xml:space=\"preserve\"> 추진하며, </w:t></w:r>" +
-            "<w:r w:rsidR=\"00112233\"><w:t>각 단계별로 성과 지표를 설정한다.</w:t></w:r>" +
-            "</w:p>" +
-            "<w:p w14:paraId=\"4D5E6F7A\">" +
-            "<w:commentRangeStart w:id=\"0\"/>" +
-            "<w:r w:rsidR=\"00445566\"><w:t>현장 작업자와 함께 실행 계획을 수립한다.</w:t></w:r>" +
-            "<w:commentRangeEnd w:id=\"0\"/>" +
-            "<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"0\"/></w:r>" +
-            "</w:p>" +
-            "</w:body></w:document>";
+        var ext = Path.GetExtension(outPath).ToLowerInvariant();
+        switch (ext)
+        {
+            case ".docx": MakeDocx(outPath, category); break;
+            case ".hwpx": MakeHwpx(outPath, category); break;
+            default: throw new Exception($"make-fixture: unsupported format {ext}");
+        }
+    }
 
-        string comments =
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
-            "<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
-            "<w:comment w:id=\"0\" w:author=\"박편집장\" w:date=\"2026-10-30T13:00:00Z\" w:initials=\"박\">" +
-            "<w:p><w:r><w:t>이 문장은 원고 메모에 근거해 주세요.</w:t></w:r></w:p>" +
-            "</w:comment>" +
-            "<w:comment w:id=\"1\" w:author=\"박편집장\" w:date=\"2026-10-30T13:01:00Z\" w:initials=\"박\">" +
-            "<w:p><w:r><w:t>기간 표기는 최종본과 대조.</w:t></w:r></w:p>" +
-            "</w:comments>";
+    // ── .docx: 카테고리별 본문 (테이블/장문/보고서+코멘트+변경추적/그림) ──
+    static void MakeDocx(string outPath, string category)
+    {
+        var (document, comments, media, docRelsExtra, ctExtra) = DocxBody(category);
 
         string contentTypes =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
@@ -515,7 +489,7 @@ internal static class Fixture
             "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
             "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>" +
             "<Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>" +
-            "<Override PartName=\"/word/comments.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml\"/>" +
+            ctExtra +
             "</Types>";
 
         string rels =
@@ -528,7 +502,7 @@ internal static class Fixture
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
             "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
             "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
-            "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" Target=\"comments.xml\"/>" +
+            docRelsExtra +
             "</Relationships>";
 
         string styles =
@@ -536,21 +510,247 @@ internal static class Fixture
             "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
             "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>" +
             "<w:style w:type=\"character\" w:styleId=\"CommentReference\"><w:name w:val=\"annotation reference\"/></w:style>" +
+            "<w:style w:type=\"table\" w:styleId=\"TableGrid\"><w:name w:val=\"Table Grid\"/></w:style>" +
             "</w:styles>";
 
         using var zip = new ZipArchive(new FileStream(outPath, FileMode.Create, FileAccess.ReadWrite), ZipArchiveMode.Create);
-        void Add(string name, string content)
+        void AddStr(string name, string content)
         {
             var e = zip.CreateEntry(name, CompressionLevel.Optimal);
             using var es = e.Open();
             var b = Encoding.UTF8.GetBytes(content);
             es.Write(b, 0, b.Length);
         }
-        Add("[Content_Types].xml", contentTypes);
-        Add("_rels/.rels", rels);
-        Add("word/document.xml", document);
-        Add("word/styles.xml", styles);
-        Add("word/comments.xml", comments);
-        Add("word/_rels/document.xml.rels", docRels);
+        void AddBytes(string name, byte[] bytes)
+        {
+            var e = zip.CreateEntry(name, CompressionLevel.Optimal);
+            using var es = e.Open();
+            es.Write(bytes, 0, bytes.Length);
+        }
+        AddStr("[Content_Types].xml", contentTypes);
+        AddStr("_rels/.rels", rels);
+        AddStr("word/document.xml", document);
+        AddStr("word/styles.xml", styles);
+        if (comments != null) AddStr("word/comments.xml", comments);
+        AddStr("word/_rels/document.xml.rels", docRels);
+        if (media != null) AddBytes("word/media/image1.png", media);
+    }
+
+    static (string doc, string? comments, byte[]? media, string docRelsExtra, string ctExtra) DocxBody(string category)
+    {
+        switch (category)
+        {
+            case "form":
+            {
+                var table = Table(new[]
+                {
+                    new[] { "사업명", "스마트 팩토리 전환 지원" },
+                    new[] { "신청기관", "중소 제조기업 (가칭)" },
+                    new[] { "지원기간", "12개월" },
+                });
+                var doc = Header("정부 양식 — 지원 신청서") + table + P("상기 내용을 확인했습니다.");
+                return (doc, null, null, "", "");
+            }
+            case "novel":
+            {
+                var paras = new[]
+                {
+                    "창밖으로 비가 내리고 있었다.",
+                    "그는 창문을 열고 손을 뻗었다.",
+                    "냉기가 손바닥에 닿았다.",
+                    "도시의 불빛이 물 위에 번졌다.",
+                    "그 순간, 그는 결심을 했다.",
+                };
+                var doc = Header("소설 원고 — 새벽") + string.Join("", paras.Select(t => P(t)));
+                return (doc, null, null, "", "");
+            }
+            case "image":
+            {
+                var imgPara =
+                    "<w:p><w:r><w:drawing>" +
+                    "<wp:inline xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\">" +
+                    "<wp:extent cx=\"914400\" cy=\"914400\"/><wp:docPr id=\"1\" name=\"Image 1\"/>" +
+                    "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+                    "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+                    "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+                    "<pic:nvPicPr><pic:cNvPr id=\"1\" name=\"image1.png\"/><pic:cNvPicPr/></pic:nvPicPr>" +
+                    "<pic:blipFill><a:blip r:embed=\"rId5\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"/></pic:blipFill>" +
+                    "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm></pic:spPr>" +
+                    "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>";
+                var doc = Header("그림 포함 문서") + P("아래는 첨부된 도판이다.") + imgPara;
+                var ctExtra = "<Default Extension=\"png\" ContentType=\"image/png\"/>";
+                var docRelsExtra = "<Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/image1.png\"/>";
+                return (doc, null, PngBytes(), docRelsExtra, ctExtra);
+            }
+            case "report":
+            default:
+            {
+                var t1 = Table(new[]
+                {
+                    new[] { "단계", "기간" },
+                    new[] { "설계", "3개월" },
+                    new[] { "시행", "6개월" },
+                });
+                var t2 = Table(new[]
+                {
+                    new[] { "지표", "목표" },
+                    new[] { "생산성", "+15%" },
+                    new[] { "비용", "-10%" },
+                });
+                var insDel =
+                    "<w:p><w:r w:rsidR=\"00112233\"><w:t xml:space=\"preserve\">총 </w:t></w:r>" +
+                    "<w:ins w:id=\"1\" w:author=\"김작가\" w:date=\"2026-10-30T12:00:00Z\"><w:r><w:t>12개월간</w:t></w:r></w:ins>" +
+                    "<w:del w:id=\"2\" w:author=\"김작가\" w:date=\"2026-10-30T12:05:00Z\"><w:r><w:delText>6개월간</w:delText></w:r></w:del>" +
+                    "<w:r w:rsidR=\"00112233\"><w:t xml:space=\"preserve\"> 추진한다.</w:t></w:r></w:p>";
+                var commentPara =
+                    "<w:p><w:commentRangeStart w:id=\"0\"/><w:r w:rsidR=\"00445566\"><w:t>현장 작업자와 함께 실행 계획을 수립한다.</w:t></w:r>" +
+                    "<w:commentRangeEnd w:id=\"0\"/><w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"0\"/></w:r></w:p>";
+                var doc = Header("표 많은 보고서") + t1 + P("다음 표는 단계별 기간이다.") + t2 + insDel + commentPara;
+                string comments =
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
+                    "<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
+                    "<w:comment w:id=\"0\" w:author=\"박편집장\" w:date=\"2026-10-30T13:00:00Z\" w:initials=\"박\">" +
+                    "<w:p><w:r><w:t>이 문장은 원고 메모에 근거해 주세요.</w:t></w:r></w:p></w:comment>" +
+                    "</w:comments>";
+                var ctExtra = "<Override PartName=\"/word/comments.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml\"/>";
+                var docRelsExtra = "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" Target=\"comments.xml\"/>";
+                return (doc, comments, null, docRelsExtra, ctExtra);
+            }
+        }
+    }
+
+    static string Header(string text) =>
+        "<w:p w14:paraId=\"1A2B3C4D\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">" +
+        $"<w:r w:rsidR=\"00A1B2C3\"><w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr><w:t>{Esc(text)}</w:t></w:r></w:p>";
+
+    static string P(string text, string rsid = "00A1B2C3") =>
+        "<w:p w14:paraId=\"9C8D7E6F\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\">" +
+        $"<w:r w:rsidR=\"{rsid}\"><w:t xml:space=\"preserve\">{Esc(text)}</w:t></w:r></w:p>";
+
+    static string Table(string[][] rows)
+    {
+        int cols = rows[0].Length;
+        var sb = new StringBuilder();
+        sb.Append("<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid>");
+        for (int c = 0; c < cols; c++) sb.Append("<w:gridCol w:w=\"4513\"/>");
+        sb.Append("</w:tblGrid>");
+        foreach (var row in rows)
+        {
+            sb.Append("<w:tr>");
+            foreach (var cell in row)
+                sb.Append($"<w:tc><w:tcPr><w:tcW w:w=\"4513\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>{Esc(cell)}</w:t></w:r></w:p></w:tc>");
+            sb.Append("</w:tr>");
+        }
+        sb.Append("</w:tbl>");
+        return sb.ToString();
+    }
+
+    static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+    // ── .hwpx (OWPML): 장문 본문 (hp: 네임스페이스 경로 검증용) ─────────────
+    static void MakeHwpx(string outPath, string category)
+    {
+        var (title, paras) = HwpxContent(category);
+        var sb = new StringBuilder();
+        sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r");
+        sb.Append("<hp:body xmlns:hp=\"http://www.hancom.co.kr/hwpml/2017\">");
+        sb.Append($"<hp:p><hp:r><hp:t>{Esc(title)}</hp:t></hp:r></hp:p>");
+        foreach (var p in paras)
+            sb.Append($"<hp:p><hp:r><hp:t xml:space=\"preserve\">{Esc(p)}</hp:t></hp:r></hp:p>");
+        sb.Append("</hp:body>");
+        var section0 = sb.ToString();
+
+        using var zip = new ZipArchive(new FileStream(outPath, FileMode.Create, FileAccess.ReadWrite), ZipArchiveMode.Create);
+        void AddStr(string name, string content)
+        {
+            var e = zip.CreateEntry(name, CompressionLevel.Optimal);
+            using var es = e.Open();
+            var b = Encoding.UTF8.GetBytes(content);
+            es.Write(b, 0, b.Length);
+        }
+        AddStr("[Content_Types].xml",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
+            "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+            "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+            "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+            "<Override PartName=\"/Contents/section0.xml\" ContentType=\"application/xml\"/>" +
+            "</Types>");
+        AddStr("_rels/.rels",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r" +
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+            "<Relationship Id=\"rId1\" Type=\"http://www.hancom.co.kr/hwpml/2017#section\" Target=\"Contents/section0.xml\"/>" +
+            "</Relationships>");
+        AddStr("Contents/section0.xml", section0);
+    }
+
+    static (string title, string[] paras) HwpxContent(string category) => category switch
+    {
+        "form" => ("지원 신청서", new[] { "사업명: 스마트 팩토리 전환 지원", "신청기관: 중소 제조기업 (가칭)", "지원기간: 12개월" }),
+        "novel" => ("새벽", new[] { "창밖으로 비가 내리고 있었다.", "그는 창문을 열고 손을 뻗었다.", "냉기가 손바닥에 닿았다." }),
+        _ => ("보고서", new[] { "다음 표는 단계별 기간이다.", "총 12개월간 추진한다.", "현장 작업자와 함께 실행 계획을 수립한다." }),
+    };
+
+    // ── 최소 유효 PNG (1x1 빨강) — 그림 파트 보존 검증용 ──────────────────
+    static byte[] PngBytes()
+    {
+        var png = new List<byte>();
+        void Chunk(string type, byte[] data)
+        {
+            var tb = Encoding.ASCII.GetBytes(type);
+            var len = BitConverter.GetBytes((uint)data.Length); Array.Reverse(len);
+            png.AddRange(len); png.AddRange(tb); png.AddRange(data);
+            var crc = Crc32(ConcatBytes(tb, data));
+            var cb = BitConverter.GetBytes(crc); Array.Reverse(cb);
+            png.AddRange(cb);
+        }
+        png.AddRange(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        Chunk("IHDR", new byte[] { 0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0 }); // 1x1 RGB
+        Chunk("IDAT", Zlib(new byte[] { 0, 255, 0, 0 })); // filter=0, R,G,B
+        Chunk("IEND", Array.Empty<byte>());
+        return png.ToArray();
+    }
+
+    static byte[] Zlib(byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var ds = new DeflateStream(ms, CompressionMode.Compress, true))
+            ds.Write(data, 0, data.Length);
+        var deflated = ms.ToArray();
+        var adler = Adler32(data);
+        var result = new byte[2 + deflated.Length + 4];
+        result[0] = 0x78; result[1] = 0x9C;
+        Array.Copy(deflated, 0, result, 2, deflated.Length);
+        var ab = BitConverter.GetBytes(adler); Array.Reverse(ab);
+        Array.Copy(ab, 0, result, 2 + deflated.Length, 4);
+        return result;
+    }
+
+    static uint Crc32(byte[] data)
+    {
+        var table = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            uint c = n;
+            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[n] = c;
+        }
+        uint crc = 0xFFFFFFFFu;
+        foreach (var b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    static uint Adler32(byte[] data)
+    {
+        uint a = 1, b = 0;
+        foreach (var x in data) { a = (a + x) & 0xFFFF; b = (b + a) & 0xFFFF; }
+        return (b << 16) | a;
+    }
+
+    static byte[] ConcatBytes(byte[] a, byte[] b)
+    {
+        var r = new byte[a.Length + b.Length];
+        Array.Copy(a, 0, r, 0, a.Length);
+        Array.Copy(b, 0, r, a.Length, b.Length);
+        return r;
     }
 }

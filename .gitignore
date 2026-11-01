@@ -2,4 +2,5 @@ bin/
 obj/
 *.user
 .vs/
-test/
+test/*
+!test/corpus/
