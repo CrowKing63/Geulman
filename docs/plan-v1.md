@@ -94,7 +94,14 @@
 
 ---
 
-## 4. 실행 순서 근거
+## 4. 알려진 한계
+
+| 항목 | 설명 | 대응 |
+|------|------|------|
+| .hwp ViewText stale 캐시 | BodyText 편집 후 외부 렌더러(rhwp, 한컴 Docs)에서 stale ViewText로 인해 편집이 안 보임. ViewText는 스크린-라인 분절 구조로, BodyText 바이트 복사나 바이트 교체가 불가능. | v2: HWP 레이아웃 엔진 구현(ViewText 재생성). v1: Hancom에서 열기→저장 시 재계산. CLI·Geulman·rhwp(BodyText 읽는 경우)에서는 정상. |
+| .hwp 다중 섹션/OLE | original.hwp 외의 복잡한 구조(다중 섹션, OLE 임베드) 미검증 | 코퍼스 확대 시 검증 (Step 3b pending) |
+
+## 5. 실행 순서 근거
 
 ```
 Step 1 → Step 2 → Step 3 → Step 4 → Step 5
