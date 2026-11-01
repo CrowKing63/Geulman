@@ -1,159 +1,212 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using System.Diagnostics;
-using System.IO;
 using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
-namespace Geulman;
-
-public partial class MainWindow : Window
+namespace Geulman
 {
-    string? _currentFile;
-    string _format = "";
-    int _replaceCount = 0;
-
-    public MainWindow()
+    public partial class MainWindow : Window
     {
-        this.InitializeComponent();
-        this.AppWindow.Resize(new Windows.Graphics.SizeInt32(780, 640));
-    }
+        private string? _currentFile;
 
-    private void BrowseBtn_Click(object sender, RoutedEventArgs e)
-    {
-        _ = OpenFileAsync();
-    }
+        public MainWindow()
+        {
+            this.InitializeComponent();
+            this.AppWindow.Resize(new Windows.Graphics.SizeInt32(780, 640));
+            this.Activate();
+            this.Title = "Geulman";
+        }
 
-    private async System.Threading.Tasks.Task OpenFileAsync()
-    {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        picker.FileTypeFilter.Add(".hwp");
-        picker.FileTypeFilter.Add(".hwpx");
-        picker.FileTypeFilter.Add(".docx");
-        var file = await picker.PickSingleFileAsync().AsTask();
-        if (file != null)
-            OpenFile(file.Path);
-    }
+        private void BrowseBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var path = NativeMethods.ShowOpenFileDialog();
+                if (!string.IsNullOrEmpty(path))
+                    OpenFile(path);
+            }
+            catch
+            {
+                // File dialog can throw in unpackaged context; ignore.
+            }
+        }
 
-    private void OpenFile(string path)
-    {
-        _currentFile = path;
-        _format = Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+        private void OpenFile(string path)
+        {
+            _currentFile = path;
+            var result = RunCli("open", path);
+            if (result == null) return;
 
-        var text = RunCli("open", path);
-        if (text == null) return;
+            var lines = result.Split('\n');
+            var bodyLines = new List<string>();
+            int headerEnd = -1;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].StartsWith("[header]"))
+                {
+                    headerEnd = i;
+                    continue;
+                }
+                if (headerEnd >= 0)
+                    bodyLines.Add(lines[i]);
+            }
 
-        EmptyState.Visibility = Visibility.Collapsed;
-        EditState.Visibility = Visibility.Visible;
+            FileNameText.Text = Path.GetFileName(path);
+            FormatText.Text = Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+            BodyEditor.Text = string.Join("\n", bodyLines);
+            CharCountText.Text = BodyEditor.Text.Length + " chars";
 
-        FileNameText.Text = Path.GetFileName(path);
-        FormatText.Text = _format;
-        BodyEditor.Text = text;
-        UpdateCharCount();
-        StatusText.Text = "";
-    }
+            EmptyState.Visibility = Visibility.Collapsed;
+            EditState.Visibility = Visibility.Visible;
+            StatusText.Text = "";
+        }
 
-    private void UpdateCharCount()
-    {
-        CharCountText.Text = BodyEditor.Text.Length + "자";
-    }
-
-    private void FindReplaceBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (FindPanel.Visibility == Visibility.Visible)
-            FindPanel.Visibility = Visibility.Collapsed;
-        else
+        private void FindReplaceBtn_Click(object sender, RoutedEventArgs e)
+        {
             FindPanel.Visibility = Visibility.Visible;
-    }
-
-    private void CloseFindBtn_Click(object sender, RoutedEventArgs e)
-    {
-        FindPanel.Visibility = Visibility.Collapsed;
-        FindBox.Text = "";
-        ReplaceBox.Text = "";
-        _replaceCount = 0;
-        StatusText.Text = "";
-    }
-
-    private void ReplaceAllBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var find = FindBox.Text;
-        var replace = ReplaceBox.Text;
-        if (string.IsNullOrEmpty(find)) return;
-
-        _replaceCount = 0;
-        var text = BodyEditor.Text;
-        while (true)
-        {
-            int idx = text.IndexOf(find, StringComparison.Ordinal);
-            if (idx < 0) break;
-            text = text.Remove(idx, find.Length).Insert(idx, replace);
-            _replaceCount++;
-        }
-        BodyEditor.Text = text;
-        UpdateCharCount();
-        StatusText.Text = _replaceCount + "개 교체됨";
-    }
-
-    private void SaveBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentFile == null) return;
-
-        var find = FindBox.Text;
-        var replace = ReplaceBox.Text;
-        if (string.IsNullOrEmpty(find))
-        {
-            StatusText.Text = "저장: 변경 사항 없음";
-            return;
+            FindBox.Focus(FocusState.Programmatic);
         }
 
-        // In-place overwrite: same path for input and output
-        var result = RunCli("edit", _currentFile, _currentFile, "--find", find, "--replace", replace);
-        if (result != null)
+        private void CloseFindBtn_Click(object sender, RoutedEventArgs e)
         {
-            ToastText.Text = "원본 형식으로 저장했습니다 — 서식·코멘트·변경 사항 보존됨.";
-            ShowToast();
-            StatusText.Text = "저장 완료: " + Path.GetFileName(_currentFile);
+            FindPanel.Visibility = Visibility.Collapsed;
+            FindBox.Text = "";
+            ReplaceBox.Text = "";
         }
-        else
+
+        private void ReplaceAllBtn_Click(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "저장 실패 (CLI 오류)";
+            var find = FindBox.Text;
+            if (string.IsNullOrEmpty(find)) return;
+
+            var text = BodyEditor.Text;
+            var count = 0;
+            var idx = 0;
+            while ((idx = text.IndexOf(find, idx, System.StringComparison.Ordinal)) >= 0)
+            {
+                text = text.Remove(idx, find.Length).Insert(idx, ReplaceBox.Text);
+                count++;
+                idx += ReplaceBox.Text.Length;
+            }
+            BodyEditor.Text = text;
+            CharCountText.Text = BodyEditor.Text.Length + " chars";
+            StatusText.Text = count + " replacements";
+        }
+
+        private void SaveBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentFile == null) return;
+
+            var find = FindBox.Text;
+            var replace = ReplaceBox.Text;
+            if (string.IsNullOrEmpty(find))
+            {
+                StatusText.Text = "Save: no find text";
+                return;
+            }
+
+            var result = RunCli("edit", _currentFile, _currentFile, "--find", find, "--replace", replace);
+            if (result != null)
+            {
+                ToastText.Text = "Saved in-place - verify by opening";
+                ShowToast();
+                StatusText.Text = "Saved: " + Path.GetFileName(_currentFile);
+            }
+            else
+            {
+                StatusText.Text = "Save failed (CLI error)";
+            }
+        }
+
+        private void ShowToast()
+        {
+            Toast.Visibility = Visibility.Visible;
+            _ = HideToastAfterDelay();
+        }
+
+        private async System.Threading.Tasks.Task HideToastAfterDelay()
+        {
+            await System.Threading.Tasks.Task.Delay(System.TimeSpan.FromSeconds(4));
+            Toast.Visibility = Visibility.Collapsed;
+        }
+
+        private string? RunCli(string command, params string[] args)
+        {
+            var baseDir = System.AppContext.BaseDirectory;
+            var cliPath = Path.Combine(baseDir, "..", "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "Geulman.Docx.dll");
+
+            var psi = new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                Arguments = "\"" + cliPath + "\" " + command + " " + string.Join(" ", args.Select(a => "\"" + a + "\"")),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            try
+            {
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null) return null;
+                var output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(30000);
+                return proc.ExitCode == 0 ? output : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 
-    private void ShowToast()
+    internal static class NativeMethods
     {
-        Toast.Visibility = Visibility.Visible;
-        _ = ToastAutoHideAsync();
-    }
-
-    private async System.Threading.Tasks.Task ToastAutoHideAsync()
-    {
-        await System.Threading.Tasks.Task.Delay(4000);
-        Toast.Visibility = Visibility.Collapsed;
-    }
-
-    private string? RunCli(string cmd, params string[] args)
-    {
-        var exePath = Path.GetFullPath(Path.Combine(System.Environment.CurrentDirectory, "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "Geulman.Docx.exe"));
-        if (!File.Exists(exePath)) return null;
-
-        var psi = new ProcessStartInfo(exePath)
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct OPENFILENAME
         {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add(cmd);
-        foreach (var a in args) psi.ArgumentList.Add(a);
-
-        try
-        {
-            using var p = Process.Start(psi)!;
-            string stdout = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            return p.ExitCode == 0 ? stdout.Trim() : null;
+            public uint lStructSize;
+            public System.IntPtr owner;
+            public System.IntPtr instance;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
+            public string filter;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStr)]
+            public char[] file;
+            public uint fileLength;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
+            public string title;
+            public uint flags;
+            public short fileType;
+            public short multiSelect;
+            public System.IntPtr extra;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)]
+            public string subDir;
+            public short subDirLength;
         }
-        catch { return null; }
+
+        [System.Runtime.InteropServices.DllImport("comdlg32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "GetOpenFileNameW")]
+        private static extern bool GetOpenFileName(ref OPENFILENAME ofn);
+
+        public static string? ShowOpenFileDialog()
+        {
+            var ofn = new OPENFILENAME();
+            ofn.lStructSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(ofn);
+            ofn.owner = IntPtr.Zero;
+            ofn.instance = IntPtr.Zero;
+            ofn.filter = "HWP\0*.hwp;*.hwpx\0DOCX\0*.docx\0All\0*.*\0\0";
+            ofn.file = new char[260];
+            ofn.fileLength = 260;
+            ofn.title = "Open document";
+            ofn.flags = 0x00080000 | 0x00000200;
+            ofn.fileType = 0;
+            ofn.multiSelect = 0;
+            ofn.extra = IntPtr.Zero;
+            ofn.subDir = "";
+            ofn.subDirLength = 0;
+
+            if (GetOpenFileName(ref ofn))
+                return new string(ofn.file).TrimEnd('\0');
+            return null;
+        }
     }
 }

@@ -18,7 +18,9 @@
                                Foreground="{StaticResource InkBrush}" Opacity="0.5" HorizontalAlignment="Center" />
                     <Button x:Name="BrowseBtn" Content="파일 열기" Click="BrowseBtn_Click"
                             MinHeight="42" Padding="24,8" CornerRadius="6"
-                            FontFamily="{StaticResource UIFont}" FontSize="14" />
+                            FontFamily="{StaticResource UIFont}" FontSize="14"
+                            Background="#3457D5" Foreground="White"
+                            BorderBrush="#3457D5" />
                 </StackPanel>
             </Border>
         </StackPanel>
