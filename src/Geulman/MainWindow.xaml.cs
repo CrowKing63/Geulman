@@ -212,9 +212,13 @@ namespace Geulman
             if (_currentFile == null) return;
 
             var currentParas = BodyEditor.Text.Split('\n');
+            // TextBox may add a trailing newline → extra empty element
+            if (currentParas.Length == _originalParas.Count + 1 && currentParas[^1] == "")
+                currentParas = currentParas[..^1];
+
             if (currentParas.Length != _originalParas.Count)
             {
-                StatusText.Text = "문단 수 변경은 v1에서 지원되지 않습니다";
+                StatusText.Text = $"문단 수 불일치 ({currentParas.Length} vs {_originalParas.Count}) — v1에서 지원되지 않습니다";
                 return;
             }
 
