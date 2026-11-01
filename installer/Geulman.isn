@@ -1,0 +1,49 @@
+; Geulman Inno Setup Script
+; Build: dotnet publish → installer/publish/ then ISCC installer/Geulman.isn
+
+#define AppName "Geulman"
+#define AppVersion "0.1.0"
+#define PublishDir "publish"
+
+[Setup]
+AppId={{B7E8A3C4-5D6F-4A2B-9C1E-8F7D6E5A4B3C}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher="Choi Uitaek"
+DefaultDirName={localdisk}\Programs\{#AppName}
+DefaultGroupName={#AppName}
+DisableReadyPage=yes
+MinWindowsVersion=10
+ArchitecturesInstallIn64BitMode=x64
+OutputBaseFilename=GeulmanSetup-{#AppVersion}
+Compression=lzma2
+SolidCompression=yes
+
+[Tasks]
+Name: desktopicon; Description: "Desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+[Files]
+; Main app (self-contained publish)
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignorenewer recursesubdirs
+; Bridge script
+Source: "..\src\hwp_bodytext_swap.py"; DestDir: "{app}\bridge"; Flags: ignorenewer
+
+[Dirs]
+Name: "{app}\bridge"
+
+[Icons]
+Name: "{autoprogram}\{#AppName}"; Filename: "{app}\Geulman.exe"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\Geulman.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\Geulman.exe"; Description: "Launch {#AppName}"; Flags: postinstall nowait
+
+[UninstallDelete]
+; Remove recent files settings
+Name: "{localappdata}\Geulman\recent.json"
+
+[Code]
+procedure CurUninstallProgressItem(const FileName: String): Boolean;
+begin
+  Result := True;
+end;

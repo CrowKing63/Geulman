@@ -85,9 +85,9 @@
 
 **목표**: 설치 가능한 패키지 + 사용자 수동 검증.
 
-- [ ] 5a. Inno Setup 스크립트 (.exe + Python 사이드카 + hwpkit venv 번들)
-- [ ] 5b. 한컴오피스에서 저장된 .hwp/.hwpx 열기 확인
-- [ ] 5c. MS Word에서 저장된 .docx 열기 확인
+- [x] 5a. Inno Setup 스크립트 (.exe + CLI + bridge script 번들) — installer/Geulman.isn + build.ps1
+- [ ] 5b. 한컴오피스에서 저장된 .hwp/.hwpx 열기 확인 (사용자)
+- [ ] 5c. MS Word에서 저장된 .docx 열기 확인 (사용자)
 - [ ] 5d. 배포 (사용자 확인 후)
 
 **검증 기준**: 사용자 수동 확인 통과 (§8.4 — 확인 전 배포 없음)

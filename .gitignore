@@ -7,3 +7,5 @@ test/*
 !test/hwp/
 !test/Geulman.Tests/
 src/Geulman.Docx/test/
+installer/publish/
+installer/Output/
