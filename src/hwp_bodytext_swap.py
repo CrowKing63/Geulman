@@ -157,9 +157,7 @@ def main(argv):
             return 0
         new_bytes = R.compress(R.serialize(recs))
         entries[bt_sid].data = new_bytes
-        vt_sids = [c[0] for c in cands if c[0] != bt_sid]
-        for vt_sid in vt_sids:
-            entries[vt_sid].data = new_bytes
+        # Do NOT replace ViewText (different record structure)
         cfb.dump(entries, out_path)
         print(count)
         return 0
@@ -177,9 +175,9 @@ def main(argv):
             set_para_text(recs, item["index"], item["text"])
         new_bytes = R.compress(R.serialize(recs))
         entries[bt_sid].data = new_bytes
-        vt_sids = [c[0] for c in cands if c[0] != bt_sid]
-        for vt_sid in vt_sids:
-            entries[vt_sid].data = new_bytes
+        # Do NOT replace ViewText: it has a different record structure
+        # (screen-line segments vs logical paragraphs). Hancom will
+        # recompute ViewText from BodyText on open.
         cfb.dump(entries, out_path)
         print(f"saved {len(edited)} paragraph(s)")
         return 0
