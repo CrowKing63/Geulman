@@ -63,6 +63,10 @@ internal static class Program
                 return Roundtrip(args[1], args[2]);
             case "edit":
                 return Edit(args);
+            case "replace-all":
+                return ReplaceAllCmd(args);
+            case "save-edited":
+                return SaveEditedCmd(args);
             case "diff":
                 return Diff(args[1], args[2]);
             default:
@@ -116,6 +120,53 @@ internal static class Program
         int n = doc.Edit(find, replace, outPath);
         if (n == 0) { Console.Error.WriteLine($"[error] not found: {find}"); return 1; }
         Console.WriteLine($"edited {n} occurrence(s) -> {outPath}");
+        return 0;
+    }
+
+    // ── replace-all: 모든 occurrence 교체 ────────────────────────────────
+    static int ReplaceAllCmd(string[] args)
+    {
+        string? inPath = null, outPath = null, find = null, replace = null;
+        for (int i = 1; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a == "--find") find = args[++i];
+            else if (a == "--replace") replace = args[++i];
+            else if (inPath == null) inPath = a;
+            else outPath = a;
+        }
+        if (inPath == null || outPath == null || find == null || replace == null) return PrintUsage();
+
+        var doc = Engines.For(inPath);
+        int n = doc.ReplaceAll(find, replace, outPath);
+        if (n == 0) { Console.Error.WriteLine($"[error] not found: {find}"); return 1; }
+        Console.WriteLine($"replaced {n} paragraph(s) -> {outPath}");
+        return 0;
+    }
+
+    // ── save-edited: 문단 인덱스+텍스트 목록으로 저장 ───────────────────────
+    static int SaveEditedCmd(string[] args)
+    {
+        string? inPath = null, outPath = null;
+        var edited = new List<(int Index, string Text)>();
+        for (int i = 1; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a == "--para")
+            {
+                var val = args[++i];
+                int colon = val.IndexOf(':');
+                if (colon > 0 && int.TryParse(val[..colon], out int idx))
+                    edited.Add((idx, val[(colon + 1)..]));
+            }
+            else if (inPath == null) inPath = a;
+            else outPath = a;
+        }
+        if (inPath == null || outPath == null || edited.Count == 0) return PrintUsage();
+
+        var doc = Engines.For(inPath);
+        doc.SaveEdited(edited, outPath);
+        Console.WriteLine($"saved {edited.Count} paragraph(s) -> {outPath}");
         return 0;
     }
 
@@ -181,6 +232,8 @@ internal interface IDocEngine
     List<(int Index, string Text)> ParagraphTexts();
     int Edit(string find, string replace, string outPath);
     void Save(string outPath);
+    int ReplaceAll(string find, string replace, string outPath);
+    void SaveEdited(List<(int Index, string Text)> editedParas, string outPath);
 }
 
 // ── 형식 감지: 확장자로 엔진 생성 ─────────────────────────────────────────
@@ -236,6 +289,30 @@ internal sealed class HwpEngine : IDocEngine
         var (exit, stdout, stderr) = RunPy(_path, outPath, idx.ToString(), find, replace);
         if (exit != 0) throw new Exception($"hwp edit failed: {stderr}");
         return 1;
+    }
+
+    public int ReplaceAll(string find, string replace, string outPath)
+    {
+        var (exit, stdout, stderr) = RunPy("--replace-all", _path, outPath, find, replace);
+        if (exit != 0) throw new Exception($"hwp replace-all failed: {stderr}");
+        int count = 0;
+        if (int.TryParse(stdout.Trim(), out count)) return count;
+        return 1;
+    }
+
+    public void SaveEdited(List<(int Index, string Text)> editedParas, string outPath)
+    {
+        // JSON 파일로 전달 (텍스트에 특수문자 포함 가능)
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            editedParas.Select(p => new { index = p.Index, text = p.Text }).ToList());
+        var tmp = Path.GetTempFileName();
+        File.WriteAllText(tmp, json);
+        try
+        {
+            var (exit, stdout, stderr) = RunPy("--save-edited", _path, outPath, tmp);
+            if (exit != 0) throw new Exception($"hwp save-edited failed: {stderr}");
+        }
+        finally { File.Delete(tmp); }
     }
 
     public void Save(string outPath) { }
@@ -410,6 +487,66 @@ internal sealed class ZipEngine : IDocEngine
             sb.Remove(start, end - start).Insert(start, replacement);
         DocumentXml = sb.ToString();
         return 1;
+    }
+
+    // ── ReplaceAll: 모든 문단에서 find를 replace로 교체 ─────────────────────
+    public int ReplaceAll(string find, string replace, string outPath)
+    {
+        int count = 0;
+        var paraMatches = _para.Matches(DocumentXml).ToList();
+        for (int i = paraMatches.Count - 1; i >= 0; i--)
+        {
+            var text = SpanText(paraMatches[i].Value, _span);
+            if (text.Contains(find, StringComparison.Ordinal))
+            {
+                string newText = text.Replace(find, replace, StringComparison.Ordinal);
+                RewriteParaSpans(i, newText);
+                count++;
+            }
+        }
+        if (count > 0) Save(outPath);
+        return count;
+    }
+
+    // ── SaveEdited: 변경된 문단만 스팬 재작성 ───────────────────────────────
+    public void SaveEdited(List<(int Index, string Text)> editedParas, string outPath)
+    {
+        var paraMatches = _para.Matches(DocumentXml).ToList();
+        foreach (var (index, text) in editedParas.OrderByDescending(x => x.Index))
+        {
+            if (index < 0 || index >= paraMatches.Count) continue;
+            RewriteParaSpans(index, text);
+        }
+        Save(outPath);
+    }
+
+    // ── 문단 인덱스의 스팬을 새 텍스트로 재작성 (첫 스팬에 전체, 나머지 공백) ──
+    void RewriteParaSpans(int paraIdx, string newText)
+    {
+        var paraMatches = _para.Matches(DocumentXml).ToList();
+        if (paraIdx >= paraMatches.Count) return;
+        var paraMatch = paraMatches[paraIdx];
+        int paraBase = paraMatch.Index;
+        var spans = new List<(int ts, int te)>();
+        foreach (Match m in _span.Matches(paraMatch.Value))
+        {
+            int tagEnd = m.Value.IndexOf('>', StringComparison.Ordinal);
+            int ts = paraBase + m.Index + tagEnd + 1;
+            int len = m.Value.Length - tagEnd - 1 - ClosingTagLen(_span);
+            spans.Add((ts, ts + len));
+        }
+        if (spans.Count == 0) return;
+
+        string esc = XmlEscape(newText);
+        var sb = new StringBuilder(DocumentXml);
+        // 역순으로 편집 (인덱스 보존)
+        for (int i = spans.Count - 1; i >= 0; i--)
+        {
+            var (ts, te) = spans[i];
+            string content = (i == 0) ? esc : "";
+            sb.Remove(ts, te - ts).Insert(ts, content);
+        }
+        DocumentXml = sb.ToString();
     }
 
     public void Save(string outPath)

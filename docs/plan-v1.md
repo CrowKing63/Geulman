@@ -32,13 +32,13 @@
 
 **목표**: BodyEditor의 편집이 원본 형식으로 디스크에 반영되도록 한다.
 
-- [ ] 1a. `ZipEngine.ReplaceAll(find, replace)` — 모든 occurrence 교체 (docx/hwpx)
-- [ ] 1b. `HwpEngine` replace-all (Python 브릿지 `--all` 플래그)
-- [ ] 1c. `IDocEngine.SaveEdited(List<(int index, string text)> editedParas, string outPath)` — 변경된 문단만 스팬 재작성, 그 외 바이트 보존
-- [ ] 1d. `ZipEngine.SaveEdited` 구현 (문단 인덱스 → `<w:t>`/`<hp:t>` 스팬 매핑)
-- [ ] 1e. `HwpEngine.SaveEdited` 구현 (Python 브릿지 `--save-edited` — 문단 인덱스+텍스트 목록 전달)
-- [ ] 1f. GUI: BodyEditor 문단 인덱스 모델 유지 + 저장 시 변경 문단 목록 추출 → `SaveEdited` 호출
-- [ ] 1g. CLI: `geulman save-edited <in> <out> --para "0:text" --para "3:text"` (GUI와 동일 경로 검증용)
+- [x] 1a. `ZipEngine.ReplaceAll(find, replace)` — 모든 occurrence 교체 (docx/hwpx)
+- [x] 1b. `HwpEngine` replace-all (Python 브릿지 `--all` 플래그)
+- [x] 1c. `IDocEngine.SaveEdited(List<(int index, string text)> editedParas, string outPath)` — 변경된 문단만 스팬 재작성, 그 외 바이트 보존
+- [x] 1d. `ZipEngine.SaveEdited` 구현 (문단 인덱스 → `<w:t>`/`<hp:t>` 스팬 매핑)
+- [x] 1e. `HwpEngine.SaveEdited` 구현 (Python 브릿지 `--save-edited` — 문단 인덱스+텍스트 목록 전달)
+- [x] 1f. GUI: BodyEditor 문단 인덱스 모델 유지 + 저장 시 변경 문단 목록 추출 → `SaveEdited` 호출
+- [x] 1g. CLI: `geulman save-edited <in> <out> --para "0:text" --para "3:text"` (GUI와 동일 경로 검증용)
 
 **검증 기준**:
 - fixture 열어 → BodyEditor에서 직접 텍스트 수정(문자 삽입/삭제 포함) → 저장 → `diff`로 변경 문단만 다름

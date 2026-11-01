@@ -11,6 +11,7 @@ namespace Geulman
         private string? _currentFile;
         private string _browseDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         private string? _selectedFile;
+        private List<string> _originalParas = new();
 
         public MainWindow()
         {
@@ -105,19 +106,20 @@ namespace Geulman
 
             // CLI output: "[N] text" per line — strip the index prefix
             var lines = result.Split('\n');
-            var bodyLines = new List<string>();
+            _originalParas.Clear();
             foreach (var line in lines)
             {
-                var idx = line.IndexOf("] ");
-                if (idx > 0 && line.StartsWith('['))
-                    bodyLines.Add(line.Substring(idx + 2));
+                var t = line.TrimEnd('\r');
+                var idx = t.IndexOf("] ");
+                if (idx > 0 && t.StartsWith('['))
+                    _originalParas.Add(t.Substring(idx + 2));
                 else
-                    bodyLines.Add(line);
+                    _originalParas.Add(t);
             }
 
             FileNameText.Text = Path.GetFileName(path);
             FormatText.Text = Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
-            BodyEditor.Text = string.Join("\n", bodyLines);
+            BodyEditor.Text = string.Join("\n", _originalParas);
             CharCountText.Text = BodyEditor.Text.Length + " chars";
 
             EmptyState.Visibility = Visibility.Collapsed;
@@ -161,24 +163,45 @@ namespace Geulman
         {
             if (_currentFile == null) return;
 
-            var find = FindBox.Text;
-            var replace = ReplaceBox.Text;
-            if (string.IsNullOrEmpty(find))
+            var currentParas = BodyEditor.Text.Split('\n');
+            if (currentParas.Length != _originalParas.Count)
             {
-                StatusText.Text = "Save: no find text";
+                StatusText.Text = "문단 수 변경은 v1에서 지원되지 않습니다";
                 return;
             }
 
-            var result = RunCli("edit", _currentFile, _currentFile, "--find", find, "--replace", replace);
+            // Find changed paragraphs
+            var edited = new List<(int Index, string Text)>();
+            for (int i = 0; i < currentParas.Length; i++)
+            {
+                if (currentParas[i] != _originalParas[i])
+                    edited.Add((i, currentParas[i]));
+            }
+
+            if (edited.Count == 0)
+            {
+                StatusText.Text = "변경된 문단이 없습니다";
+                return;
+            }
+
+            // Build CLI args: save-edited <in> <out> --para "idx:text" ...
+            var cliArgs = new List<string> { _currentFile, _currentFile };
+            foreach (var (idx, text) in edited)
+            {
+                cliArgs.Add("--para");
+                cliArgs.Add($"{idx}:{text}");
+            }
+
+            var result = RunCli("save-edited", cliArgs.ToArray());
             if (result != null)
             {
-                ToastText.Text = "Saved in-place - verify by opening";
+                ToastText.Text = "원본 형식으로 저장했습니다 — 서식·코멘트·변경 사항 보존됨";
                 ShowToast();
-                StatusText.Text = "Saved: " + Path.GetFileName(_currentFile);
+                StatusText.Text = edited.Count + " 문단 수정됨";
             }
             else
             {
-                StatusText.Text = "Save failed (CLI error)";
+                StatusText.Text = "저장 실패 (CLI error)";
             }
         }
 

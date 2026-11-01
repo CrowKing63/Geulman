@@ -89,6 +89,40 @@ def find_bodytext_sids(entries):
     return sids
 
 
+def set_para_text(records, paragraph_index, new_text):
+    """Set paragraph N's PARA_TEXT to new_text (any length).
+
+    Replaces the entire text content, updates PARA_HEADER char count,
+    and invalidates LineSeg so Hancom recomputes layout.
+    """
+    para_indices = R.index_paragraphs(records)
+    pr_idx = para_indices[paragraph_index]
+    pt_idx = R._para_text_after(records, pr_idx)
+    if pt_idx is None:
+        raise ValueError(f"P{paragraph_index} has no PARA_TEXT to edit")
+
+    new_b = new_text.encode("utf-16-le")
+    records[pt_idx]["body"] = new_b
+    records[pt_idx]["size"] = len(new_b)
+    if len(new_b) >= 0xFFF:
+        records[pt_idx]["force_extended_header"] = True
+        records[pt_idx]["header_len"] = 8
+    else:
+        records[pt_idx].pop("force_extended_header", None)
+        records[pt_idx]["header_len"] = 4
+
+    # Update PARA_HEADER char count
+    para = records[pr_idx]
+    pbody = bytearray(para["body"])
+    chars_raw = struct.unpack_from("<I", pbody, 0)[0]
+    high_bit = chars_raw & 0x80000000
+    struct.pack_into("<I", pbody, 0, high_bit | (len(new_text) & 0x7FFFFFFF))
+    para["body"] = bytes(pbody)
+
+    # Invalidate cached line layout
+    R._regenerate_lineseg(records, pr_idx, len(new_text))
+
+
 def main(argv):
     if argv and argv[0] == "--list":
         entries = cfb.load(argv[1])
@@ -104,6 +138,50 @@ def main(argv):
         lines = [l for l in R.extract_text(recs).split("\n")]
         for i, line in enumerate(lines):
             print(f"[{i}] {line}")
+        return 0
+
+    if argv and argv[0] == "--replace-all":
+        in_path, out_path, find, replace = argv[1], argv[2], argv[3], argv[4]
+        entries = cfb.load(in_path)
+        cands = find_bodytext_sids(entries)
+        bt_sid = min(cands, key=lambda c: c[1])[0]
+        recs = R.parse(R.decompress(entries[bt_sid].data))
+        lines = R.extract_text(recs).split("\n")
+        count = 0
+        for i, line in enumerate(lines):
+            if find in line:
+                set_para_text(recs, i, line.replace(find, replace))
+                count += 1
+        if count == 0:
+            print("0")
+            return 0
+        new_bytes = R.compress(R.serialize(recs))
+        entries[bt_sid].data = new_bytes
+        vt_sids = [c[0] for c in cands if c[0] != bt_sid]
+        for vt_sid in vt_sids:
+            entries[vt_sid].data = new_bytes
+        cfb.dump(entries, out_path)
+        print(count)
+        return 0
+
+    if argv and argv[0] == "--save-edited":
+        import json
+        in_path, out_path, json_path = argv[1], argv[2], argv[3]
+        with open(json_path, "r", encoding="utf-8") as f:
+            edited = json.load(f)
+        entries = cfb.load(in_path)
+        cands = find_bodytext_sids(entries)
+        bt_sid = min(cands, key=lambda c: c[1])[0]
+        recs = R.parse(R.decompress(entries[bt_sid].data))
+        for item in edited:
+            set_para_text(recs, item["index"], item["text"])
+        new_bytes = R.compress(R.serialize(recs))
+        entries[bt_sid].data = new_bytes
+        vt_sids = [c[0] for c in cands if c[0] != bt_sid]
+        for vt_sid in vt_sids:
+            entries[vt_sid].data = new_bytes
+        cfb.dump(entries, out_path)
+        print(f"saved {len(edited)} paragraph(s)")
         return 0
 
     in_path, out_path, para_idx, old, new = argv[0], argv[1], int(argv[2]), argv[3], argv[4]
