@@ -4,4 +4,6 @@ obj/
 .vs/
 test/*
 !test/corpus/
+!test/hwp/
+!test/Geulman.Tests/
 src/Geulman.Docx/test/

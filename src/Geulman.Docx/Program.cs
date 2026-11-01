@@ -256,7 +256,20 @@ internal static class Engines
 internal sealed class HwpEngine : IDocEngine
 {
     readonly string _path;
-    static string PyScript => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "hwp_bodytext_swap.py"));
+    static string PyScript => FindPyScript();
+
+    static string FindPyScript()
+    {
+        // Walk up from assembly dir until we find src/hwp_bodytext_swap.py
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++)
+        {
+            var candidate = Path.Combine(dir.FullName, "src", "hwp_bodytext_swap.py");
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException("hwp_bodytext_swap.py not found in repo tree");
+    }
 
     public HwpEngine(string path) => _path = path;
 

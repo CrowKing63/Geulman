@@ -49,14 +49,14 @@
 
 **목표**: 스펙 §8의 검증 전략을 테스트 코드로 고정.
 
-- [ ] 2a. `test/Geulman.Tests` (xUnit) 프로젝트 생성
-- [ ] 2b. docx round-trip: 편집 없음 → 모든 zip 파트 byte-identical
-- [ ] 2c. hwpx round-trip:同上
-- [ ] 2d. edited round-trip: N개 문단 수정 → 저장 → 변경 문단만 diff, 코멘트/변경 추적 개수 불변
-- [ ] 2e. .hwp dump 대조: 편집 후 레코드 트리 대조 (byte 동일 아님)
-- [ ] 2f. replace-all 테스트: 여러 occurrence 문서에서 전체 교체 확인
+- [x] 2a. `test/Geulman.Tests` (xUnit) 프로젝트 생성
+- [x] 2b. docx round-trip: 편집 없음 → 모든 zip 파트 byte-identical (4개 코퍼스)
+- [x] 2c. hwpx round-trip: 동일 (2개 코퍼스)
+- [x] 2d. edited round-trip: N개 문단 수정 → 저장 → 변경 문단만 diff, 코멘트/변경 추적 개수 불변
+- [x] 2e. .hwp dump 대조: 편집 후 레코드 트리 대조 (byte 동일 아님)
+- [x] 2f. replace-all 테스트: 여러 occurrence 문서에서 전체 교체 확인
 
-**검증 기준**: `dotnet test` 한 번에 통과
+**검증 기준**: `dotnet test` → 10/10 통과 ✅
 
 ### Step 3: 코퍼스 확대
 
