@@ -225,9 +225,6 @@ internal sealed class HwpEngine : IDocEngine
 
     public int Edit(string find, string replace, string outPath)
     {
-        if (find.Length != replace.Length)
-            throw new Exception("hwp: equal-length swap required");
-
         var paras = ParagraphTexts();
         int idx = -1;
         for (int i = 0; i < paras.Count; i++)

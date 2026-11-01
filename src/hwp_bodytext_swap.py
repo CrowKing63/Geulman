@@ -7,6 +7,9 @@ BodyText/Section* 스트림만 정확히 편집한다.
 원칙:
   - swap_in_para_text는 같은 길이의 텍스트만 교체 → 바이트 길이 보존 →
     PARA_LINE_SEG(레이아웃 캐시) 무효화 불필요
+  - 길이 변화(len(old) != len(new)는 swap_in_para_text_lenient가 PARA_TEXT
+    바이트를 교체하고 PARA_HEADER char count를 갱신한 뒤, 존재하는
+    PARA_LINE_SEG만 더미화해 한컴이 레이아웃을 재계산하게 한다.
   - BodyText 외 모든 CFB 스트림은 byte 그대로 (cfb.dump가 디렉토리 트리 보존)
   - ViewText 동기화: 웹 렌더러(한컴 Docs, rhwp)는 ViewText를 읽으므로
     편집된 BodyText 내용으로 대체한다. 한컴 데스크톱도 정상 오픈 확인됨.
@@ -14,14 +17,60 @@ BodyText/Section* 스트림만 정확히 편집한다.
 사용:
   python hwp_bodytext_swap.py --list <in.hwp>
   python hwp_bodytext_swap.py <in.hwp> <out.hwp> <문단인덱스> <old> <new> [bt_sid]
-  (len(old) == len(new) 필수; bt_sid 생략 시 문단 수가 적은 쪽을 BodyText로 가정)
+  (len(old) == len(new)이면 동일 길이 스왑, 다르면 길이 변화 스왑;
+   bt_sid 생략 시 문단 수가 적은 쪽을 BodyText로 가정)
 
 문단 인덱스는 BodyText의 로컬 문단 번호다. --list 출력에서 BodyText sid를
 판정해서 명시적으로 전달하는 것이 안전하다.
 """
+import struct
 import sys
 
 from hwpkit import cfb, records as R
+
+
+def swap_in_para_text_lenient(records, paragraph_index, old, new):
+    """Replace a UTF-16LE substring of any length in paragraph N's PARA_TEXT.
+
+    Unlike records.swap_in_para_text (equal-length only), this handles
+    len(old) != len(new). It updates the PARA_HEADER char count by the
+    delta and regenerates the cached PARA_LINE_SEG as an all-zero dummy so
+    Hancom recomputes the layout from PARA_CHAR_SHAPE on open. BodyText
+    streams rarely carry a LineSeg, so _regenerate_lineseg is usually a
+    no-op; it only matters for the few paragraphs that do.
+    """
+    para_indices = R.index_paragraphs(records)
+    pr_idx = para_indices[paragraph_index]
+    pt_idx = R._para_text_after(records, pr_idx)
+    if pt_idx is None:
+        raise ValueError(f"P{paragraph_index} has no PARA_TEXT to edit")
+    old_b = old.encode("utf-16-le")
+    new_b = new.encode("utf-16-le")
+    body = records[pt_idx]["body"]
+    if old_b not in body:
+        raise ValueError(f"P{paragraph_index} PARA_TEXT does not contain {old!r}")
+
+    # 1) swap the text bytes (first occurrence, like the equal-length path)
+    records[pt_idx]["body"] = body.replace(old_b, new_b, 1)
+    records[pt_idx]["size"] = len(records[pt_idx]["body"])
+    if records[pt_idx]["size"] >= 0xFFF:
+        records[pt_idx]["force_extended_header"] = True
+        records[pt_idx]["header_len"] = 8
+    else:
+        records[pt_idx].pop("force_extended_header", None)
+        records[pt_idx]["header_len"] = 4
+
+    # 2) bump the PARA_HEADER char count by (len(new) - len(old))
+    para = records[pr_idx]
+    pbody = bytearray(para["body"])
+    chars_raw = struct.unpack_from("<I", pbody, 0)[0]
+    high_bit = chars_raw & 0x80000000
+    new_chars = (chars_raw & 0x7FFFFFFF) + (len(new) - len(old))
+    struct.pack_into("<I", pbody, 0, high_bit | (new_chars & 0x7FFFFFFF))
+    para["body"] = bytes(pbody)
+
+    # 3) invalidate the cached line layout so Hancom recomputes it
+    R._regenerate_lineseg(records, pr_idx, new_chars)
 
 
 def find_bodytext_sids(entries):
@@ -59,9 +108,6 @@ def main(argv):
 
     in_path, out_path, para_idx, old, new = argv[0], argv[1], int(argv[2]), argv[3], argv[4]
     bt_sid_arg = int(argv[5]) if len(argv) > 5 else None
-    if len(old) != len(new):
-        print("error: equal-length swap required", file=sys.stderr)
-        return 1
 
     entries = cfb.load(in_path)
     cands = find_bodytext_sids(entries)
@@ -73,7 +119,10 @@ def main(argv):
         print(f"note: assumed sid {bt_sid} is BodyText (fewest paras={min(c[1] for c in cands)}); verify with --list", file=sys.stderr)
 
     recs = R.parse(R.decompress(entries[bt_sid].data))
-    R.swap_in_para_text(recs, para_idx, old, new)
+    if len(old) == len(new):
+        R.swap_in_para_text(recs, para_idx, old, new)
+    else:
+        swap_in_para_text_lenient(recs, para_idx, old, new)
     new_bytes = R.compress(R.serialize(recs))
     entries[bt_sid].data = new_bytes
 
