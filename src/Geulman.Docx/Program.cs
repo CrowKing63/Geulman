@@ -506,14 +506,15 @@ internal sealed class ZipEngine : IDocEngine
     public int ReplaceAll(string find, string replace, string outPath)
     {
         int count = 0;
-        var paraMatches = _para.Matches(DocumentXml).ToList();
-        for (int i = paraMatches.Count - 1; i >= 0; i--)
+        var paraRanges = FindTopLevelParas();
+        for (int i = paraRanges.Count - 1; i >= 0; i--)
         {
-            var text = SpanText(paraMatches[i].Value, _span);
+            string paraXml = DocumentXml[paraRanges[i].start..paraRanges[i].end];
+            var text = SpanText(paraXml, _span);
             if (text.Contains(find, StringComparison.Ordinal))
             {
                 string newText = text.Replace(find, replace, StringComparison.Ordinal);
-                RewriteParaSpans(i, newText);
+                RewriteParaSpans(paraRanges[i], newText);
                 count++;
             }
         }
@@ -524,27 +525,94 @@ internal sealed class ZipEngine : IDocEngine
     // ── SaveEdited: 변경된 문단만 스팬 재작성 ───────────────────────────────
     public void SaveEdited(List<(int Index, string Text)> editedParas, string outPath)
     {
-        var paraMatches = _para.Matches(DocumentXml).ToList();
+        var paraRanges = FindTopLevelParas();
         foreach (var (index, text) in editedParas.OrderByDescending(x => x.Index))
         {
-            if (index < 0 || index >= paraMatches.Count) continue;
-            RewriteParaSpans(index, text);
+            if (index < 0 || index >= paraRanges.Count) continue;
+            RewriteParaSpans(paraRanges[index], text);
         }
         Save(outPath);
     }
 
-    // ── 문단 인덱스의 스팬을 새 텍스트로 재작성 (첫 스팬에 전체, 나머지 공백) ──
-    void RewriteParaSpans(int paraIdx, string newText)
+    // ── Top-level paragraph ranges (nesting-aware for .hwpx) ──────────────
+    // .docx: <w:p> never nests → simple regex works.
+    // .hwpx: <hp:p> can nest inside <hp:subList> (memo fields) → track depth.
+    List<(int start, int end)> FindTopLevelParas()
     {
-        var paraMatches = _para.Matches(DocumentXml).ToList();
-        if (paraIdx >= paraMatches.Count) return;
-        var paraMatch = paraMatches[paraIdx];
-        int paraBase = paraMatch.Index;
-        var spans = new List<(int ts, int te)>();
-        foreach (Match m in _span.Matches(paraMatch.Value))
+        var ranges = new List<(int, int)>();
+        // Extract tag name from the para regex: pattern starts with "<hp:p" or "<w:p"
+        string pattern = _para.ToString();
+        int lastP = pattern.IndexOf("p", pattern.IndexOf(':') + 1, StringComparison.Ordinal);
+        string prefix = pattern[..(lastP + 1)]; // "<hp:p" or "<w:p"
+        string closeTag = "</" + prefix[1..] + ">"; // "</hp:p>" or "</w:p>"
+
+        int i = 0;
+        while (i < DocumentXml.Length)
         {
+            int openIdx = DocumentXml.IndexOf(prefix, i, StringComparison.Ordinal);
+            if (openIdx < 0) break;
+            // Verify it's a tag start (next char is space or '>')
+            int tagEnd = DocumentXml.IndexOf('>', openIdx);
+            if (tagEnd < 0) break;
+            char nextChar = (openIdx + prefix.Length < DocumentXml.Length) ? DocumentXml[openIdx + prefix.Length] : '>';
+            if (nextChar != ' ' && nextChar != '>') { i = openIdx + 1; continue; }
+
+            // Track nesting depth from this opening tag
+            int depth = 1;
+            int scan = tagEnd + 1;
+            while (depth > 0 && scan < DocumentXml.Length)
+            {
+                int nextOpen = DocumentXml.IndexOf(prefix, scan, StringComparison.Ordinal);
+                int nextClose = DocumentXml.IndexOf(closeTag, scan, StringComparison.Ordinal);
+                if (nextClose < 0) break;
+                if (nextOpen >= 0 && nextOpen < nextClose)
+                {
+                    // Verify it's a real tag start
+                    int oe = DocumentXml.IndexOf('>', nextOpen);
+                    char oc = (nextOpen + prefix.Length < DocumentXml.Length) ? DocumentXml[nextOpen + prefix.Length] : '>';
+                    if (oc == ' ' || oc == '>') depth++;
+                    scan = (oe >= 0 ? oe : nextOpen) + 1;
+                }
+                else
+                {
+                    depth--;
+                    scan = nextClose + closeTag.Length;
+                }
+            }
+            if (depth == 0)
+            {
+                ranges.Add((openIdx, scan));
+                i = scan;
+            }
+            else
+            {
+                i = openIdx + 1;
+            }
+        }
+        return ranges;
+    }
+
+    // ── 문단 range의 스팬을 새 텍스트로 재작성 (첫 스팬에 전체, 나머지 공백) ──
+    void RewriteParaSpans((int start, int end) paraRange, string newText)
+    {
+        int paraBase = paraRange.start;
+        string paraXml = DocumentXml[paraRange.start..paraRange.end];
+
+        // Find field regions to exclude: <hp:fieldBegin>...</hp:fieldEnd>
+        // contains nested paragraphs (memo content) that must not be edited.
+        var fieldRe = new Regex("<hp:fieldBegin[^>]*>.*?</hp:fieldBegin>", RegexOptions.Singleline);
+        var fieldRanges = fieldRe.Matches(paraXml).Select(m => (m.Index, m.Index + m.Length)).ToList();
+
+        var spans = new List<(int ts, int te)>();
+        foreach (Match m in _span.Matches(paraXml))
+        {
+            int spanStart = m.Index;
+            int spanEnd = m.Index + m.Length;
+            // Skip spans inside fieldBegin/fieldEnd (memo/annotation content)
+            if (fieldRanges.Any(r => spanStart >= r.Item1 && spanEnd <= r.Item2))
+                continue;
             int tagEnd = m.Value.IndexOf('>', StringComparison.Ordinal);
-            int ts = paraBase + m.Index + tagEnd + 1;
+            int ts = paraBase + spanStart + tagEnd + 1;
             int len = m.Value.Length - tagEnd - 1 - ClosingTagLen(_span);
             spans.Add((ts, ts + len));
         }
