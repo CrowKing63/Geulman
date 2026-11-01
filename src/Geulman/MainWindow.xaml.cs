@@ -145,6 +145,7 @@ namespace Geulman
 
             _currentFile = path;
             RecentFiles.Save(path); // 4a: update recent list
+
             var result = RunCli("open", path);
             if (result == null)
             {
@@ -152,7 +153,6 @@ namespace Geulman
                 return;
             }
 
-            // CLI output: "[N] text" per line — strip the index prefix
             var lines = result.Split('\n');
             _originalParas.Clear();
             foreach (var line in lines)
@@ -166,7 +166,7 @@ namespace Geulman
             }
 
             FileNameText.Text = Path.GetFileName(path);
-            FormatText.Text = Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+            FormatText.Text = ext.TrimStart('.').ToUpperInvariant();
             BodyEditor.Text = string.Join("\n", _originalParas);
             CharCountText.Text = BodyEditor.Text.Length + " chars";
 
@@ -211,9 +211,9 @@ namespace Geulman
         {
             if (_currentFile == null) return;
 
-            var currentParas = BodyEditor.Text.Split('\n');
-            // TextBox may add a trailing newline → extra empty element
-            if (currentParas.Length == _originalParas.Count + 1 && currentParas[^1] == "")
+            var raw = BodyEditor.Text.Replace("\r\n", "\n").Replace("\r", "\n");
+            var currentParas = raw.Split('\n');
+            if (currentParas.Length > 0 && currentParas[^1] == "")
                 currentParas = currentParas[..^1];
 
             if (currentParas.Length != _originalParas.Count)
@@ -222,7 +222,6 @@ namespace Geulman
                 return;
             }
 
-            // Find changed paragraphs
             var edited = new List<(int Index, string Text)>();
             for (int i = 0; i < currentParas.Length; i++)
             {
@@ -236,7 +235,6 @@ namespace Geulman
                 return;
             }
 
-            // Build CLI args: save-edited <in> <out> --para "idx:text" ...
             var cliArgs = new List<string> { _currentFile, _currentFile };
             foreach (var (idx, text) in edited)
             {
@@ -257,6 +255,62 @@ namespace Geulman
             }
         }
 
+        private string? RunCli(string command, params string[] args)
+        {
+            var baseDir = System.AppContext.BaseDirectory;
+            var cliPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "Geulman.Docx.dll"));
+            var dotnetPath = Path.Combine(@"C:\Program Files\dotnet", "dotnet.exe");
+
+            var tmpOut = Path.GetTempFileName();
+            var tmpErr = Path.GetTempFileName();
+
+            var argStr = string.Join(" ", args.Select(a => $"\"{a}\""));
+            var cmd = $"/c \"\"{dotnetPath}\" \"{cliPath}\" {command} {argStr} > \"\"{tmpOut}\"\" 2> \"\"{tmpErr}\"\"\"";
+
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe")
+                {
+                    Arguments = cmd,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null) return null;
+                proc.WaitForExit(60000);
+
+                // Diagnostic: log everything
+                var dbg = Path.Combine(Path.GetTempPath(), "geulman-cli-diag.txt");
+                File.WriteAllText(dbg,
+                    $"command: {command}\n" +
+                    $"cliPath: {cliPath}\n" +
+                    $"exitCode: {proc.ExitCode}\n" +
+                    $"--- stdout ---\n" +
+                    (File.Exists(tmpOut) ? File.ReadAllText(tmpOut) : "(missing)") +
+                    $"--- stderr ---\n" +
+                    (File.Exists(tmpErr) ? File.ReadAllText(tmpErr) : "(missing)"));
+
+                if (proc.ExitCode != 0)
+                {
+                    StatusText.Text = $"CLI error (exit {proc.ExitCode}) → {dbg}";
+                    return null;
+                }
+
+                var output = File.ReadAllText(tmpOut);
+                return output.TrimEnd('\r', '\n');
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"RunCli exception: {ex.Message}";
+                return null;
+            }
+            finally
+            {
+                try { File.Delete(tmpOut); } catch { }
+                try { File.Delete(tmpErr); } catch { }
+            }
+        }
+
         private void ShowToast()
         {
             Toast.Visibility = Visibility.Visible;
@@ -269,35 +323,5 @@ namespace Geulman
             Toast.Visibility = Visibility.Collapsed;
         }
 
-        private string? RunCli(string command, params string[] args)
-        {
-            var baseDir = System.AppContext.BaseDirectory;
-            var cliPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Geulman.Docx", "bin", "Debug", "net8.0", "geulman.dll"));
-            var dotnetPath = Path.Combine(@"C:\Program Files\dotnet", "dotnet.exe");
-
-            var psi = new System.Diagnostics.ProcessStartInfo(dotnetPath)
-            {
-                Arguments = "\"" + cliPath + "\" " + command + " " + string.Join(" ", args.Select(a => "\"" + a + "\"")),
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            psi.Environment["PYTHONIOENCODING"] = "utf-8";
-            psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
-
-            try
-            {
-                using var proc = System.Diagnostics.Process.Start(psi);
-                if (proc == null) return null;
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(30000);
-                return proc.ExitCode == 0 ? output : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
     }
 }
