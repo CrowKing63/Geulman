@@ -171,41 +171,13 @@ def main(argv):
         cands = find_bodytext_sids(entries)
         bt_sid = min(cands, key=lambda c: c[1])[0]
         recs = R.parse(R.decompress(entries[bt_sid].data))
-
-        # Collect old texts before modifying (needed for ViewText sync)
-        old_texts = {}
-        para_indices = R.index_paragraphs(recs)
-        for item in edited:
-            idx = item["index"]
-            pt_idx = R._para_text_after(recs, para_indices[idx])
-            if pt_idx is not None:
-                old_texts[idx] = recs[pt_idx]["body"].decode("utf-16-le", errors="replace")
-
         for item in edited:
             set_para_text(recs, item["index"], item["text"])
         new_bytes = R.compress(R.serialize(recs))
         entries[bt_sid].data = new_bytes
-
-        # Sync ViewText: same-length byte replacement for each edit.
-        # ViewText has a different record structure (screen-line segments),
-        # so we can't copy BodyText data into it. Instead, search for the
-        # old UTF-16LE bytes in the decompressed ViewText and replace in place.
-        vt_sids = [c[0] for c in cands if c[0] != bt_sid]
-        for vt_sid in vt_sids:
-            vt_raw = R.decompress(entries[vt_sid].data)
-            modified = False
-            for idx, old_text in old_texts.items():
-                new_text = next(i["text"] for i in edited if i["index"] == idx)
-                if len(old_text) != len(new_text):
-                    continue  # different length: skip (Hancom recomputes on open)
-                old_b = old_text.encode("utf-16-le")
-                new_b = new_text.encode("utf-16-le")
-                if old_b in vt_raw:
-                    vt_raw = vt_raw.replace(old_b, new_b, 1)
-                    modified = True
-            if modified:
-                entries[vt_sid].data = R.compress(vt_raw)
-
+        # Do NOT replace ViewText: it has a different record structure
+        # (screen-line segments vs logical paragraphs). Hancom will
+        # recompute ViewText from BodyText on open.
         cfb.dump(entries, out_path)
         print(f"saved {len(edited)} paragraph(s)")
         return 0
