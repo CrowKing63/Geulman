@@ -89,12 +89,15 @@
 | `.hwp`/`.hwpx` 읽기·쓰기 | **python-hwpx** (순수 Python, 한컴 불필요, 코멘트·각주·변경 추적 명시 지원) | hwp-cli (Rust, `edit`가 미해석 레코드 보존 명시 — 신뢰 비교용) | Python 단일 스택 유지. hwp-cli는 원거리(fidelity) 대조 검증 도구로 병행 활용 |
 | `.docx` 읽기·쓰기 | **zip + lxml in-place 패치** (미이해 엘리먼트는 그대로, `<w:t>`만 교체) | papyrus-docx (브라우저 전용이라 데스크톱에는 부적합하지만 설계 검증 참고) | ECMA-376 공개 스펙. rsid·paraId 속성 보존 필수 |
 
-### 앱 기술 스택
-- **플랫폼: Windows 전용** (맥 고려 안 함 — 테스트 환경 부재 + macOS는 아름다운 앱이 이미 많음)
-- **추천: WinUI 3 (.NET/C#)** — Windows 11 네이티브 디자인(Mica, Fluent 2, 라운지드 코너)을 쓸 수 있는 유일한 경로.
-  - `.docx` 엔진: C# 직접 구현 (zip + `document.xml` in-place 패치 — 사이드카 불필요)
-  - `.hwp`/`.hwpx` 엔진: **Python 사이드카** (python-hwpx, PyInstaller로 번들링)
-- 배제: PySide6(디자인 근사만 가능), Tauri(이중 스택), Flutter(생태계 불일치), Electron(무게)
+### 앱 기술 스택 (실제 구현)
+- **플랫폼: Windows 전용**
+- **GUI: WinUI 3 (.NET 8, C#)** — unpackaged, 단일 창
+  - 파일 선택: 네이티브 WinUI 3 ListView 기반 파일 브라우저 (외부 API 무의존)
+  - 버튼 스타일: 중립(경계선+밝은 배경), 액센트 색 없음
+- **CLI 엔진: C# (`Geulman.Docx`)** — `dotnet geulman.dll <command>`
+  - `.docx`/`.hwpx`: C# ZipEngine (in-place XML 패치)
+  - `.hwp`: Python hwpkit 브릿지 (`hwp_bodytext_swap.py`, UTF-8 파이프라인)
+- **Python**: Hermes venv (`hwpkit`, `olefile`) — 절대 경로로 호출
 
 ---
 
@@ -141,13 +144,16 @@
 
 ## 9. 마일스톤
 
-| 단계 | 내용 | 산출물 |
-|---|---|---|
-| M0 | 이 스펙 확정 + 기술 스택 결정 | v0.2 스펙 |
-| M1 | docx 엔진: 열기→읽기→텍스트 편집→in-place 저장 + round-trip 테스트 통과 | `.docx` 동작 프로토타입 |
-| M2 | HWP/HWPX 엔진: python-hwpx 통합 + hwp-cli 대조 검증 | `.hwp`/`.hwpx` 동작 프로토타입 |
-| M3 | UI 조립 (스케치 3상태) + 접근성 점검 | 첫 실행 가능 빌드 |
-| M4 | 코퍼스 검증 + 사용자 수동 확인 + 배포 패키지 | v1.0 |
+| 단계 | 내용 | 산출물 | 상태 |
+|---|---|---|---|
+| M0 | 스펙 확정 + 기술 스택 결정 | v0.2 스펙 | ✅ |
+| M1 | docx 엔진: 열기→읽기→텍스트 편집→in-place 저장 + round-trip 테스트 통과 | `.docx` C# ZipEngine | ✅ |
+| M2 | HWP/HWPX 엔진: Python hwpkit 브릿지 + byte-검증 | `.hwp`/`.hwpx` 동작 | ✅ |
+| M3 | UI 조립 (WinUI 3) + 접근성 점검 | 첫 실행 가능 빌드 | ✅ |
+| M4 | 코퍼스 검증 + CLI end-to-end 테스트 | 7종 fixture byte-검증 통과 | ✅ |
+| M5 | .hwp end-to-end: ViewText 동기화 복원 | hwpkit cfb+records 직접 편집 | ✅ |
+| M6 | GUI 완성: 파일 브라우저, UTF-8 파이프라인, 버튼 통일 | 디버그 빌드 실사용 가능 | ✅ |
+| M7 | (보류) 배포 패키지 (MSIX/Inno Setup) | — | ⏸ |
 
 ---
 
